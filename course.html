@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Course · My Learning Platform</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <style>
+    .course-hero { display: grid; gap: 24px; grid-template-columns: 120px 1fr; align-items: center; margin-bottom: 28px; }
+    .course-hero .cover { width: 120px; height: 120px; border-radius: 20px; display: grid; place-items: center; font-size: 3.4rem; }
+    .course-hero h1 { margin: 8px 0; font-size: clamp(1.6rem, 4vw, 2.2rem); }
+    @media (max-width: 600px) { .course-hero { grid-template-columns: 1fr; } }
+    .course-layout { display: grid; gap: 24px; grid-template-columns: minmax(0, 1fr) 300px; align-items: start; }
+    @media (max-width: 860px) { .course-layout { grid-template-columns: minmax(0, 1fr); } }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+  <script src="js/app.js"></script>
+</head>
+<body>
+  <main class="page" id="root"><div class="spinner">Loading course…</div></main>
+
+  <script>
+    App.renderNav();
+    const { esc } = App;
+
+    (async () => {
+      const root = App.$("#root");
+      const { data: course } = await App.sb.from("courses")
+        .select("*, lessons(id, position, title, duration_minutes, is_preview)")
+        .eq("slug", App.param("slug") || "").maybeSingle();
+      if (!course) return (root.innerHTML = `<div class="empty"><h1>Course not found</h1><a href="courses.html">Back to all courses</a></div>`);
+      document.title = `${course.title} · My Learning Platform`;
+      course.lessons.sort((a, b) => a.position - b.position);
+
+      const me = await App.getProfile();
+      let enrollment = null, done = new Set(), certificate = null;
+      if (me) {
+        const [e, p, c] = await Promise.all([
+          App.sb.from("enrollments").select("*").eq("course_id", course.id).maybeSingle(),
+          App.sb.from("lesson_progress").select("lesson_id").eq("course_id", course.id),
+          App.sb.from("certificates").select("id, code").eq("course_id", course.id).maybeSingle(),
+        ]);
+        enrollment = e.data;
+        done = new Set((p.data || []).map((r) => r.lesson_id));
+        certificate = c.data;
+      }
+
+      const canAccess = (l) => !course.is_premium || l.is_preview || me?.premium || me?.profile.is_admin;
+      const total = course.lessons.length;
+      const pct = total ? Math.round((done.size / total) * 100) : 0;
+      const minutes = course.lessons.reduce((s, l) => s + l.duration_minutes, 0);
+      const nextLesson = course.lessons.find((l) => l.id === enrollment?.last_lesson_id && !done.has(l.id))
+        || course.lessons.find((l) => !done.has(l.id)) || course.lessons[0];
+      const locked = course.is_premium && !me?.premium && !me?.profile.is_admin;
+
+      let action;
+      if (!me) action = `<a class="button block" href="login.html?mode=signup&next=${encodeURIComponent("course.html?slug=" + course.slug)}">Sign up to start</a>`;
+      else if (certificate) action = `<a class="button block" href="certificate.html?code=${esc(certificate.code)}">🎓 View certificate</a>`;
+      else if (locked && !canAccess(nextLesson)) action = `<a class="button block" href="pricing.html">Unlock with Pro</a>`;
+      else if (enrollment) action = `<a class="button block" href="lesson.html?id=${nextLesson.id}">Continue learning</a>`;
+      else action = `<button class="button block" id="enroll">Start course</button>`;
+
+      root.innerHTML = `
+        <a href="courses.html" class="subtle">← All courses</a>
+        <section class="course-hero" style="margin-top:12px">
+          <div class="cover" style="background:color-mix(in srgb, ${esc(course.color)} 18%, transparent)">${esc(course.emoji)}</div>
+          <div>
+            <div class="row">
+              <span class="badge ${course.is_premium ? "premium" : "free"}">${course.is_premium ? "★ Premium" : "Free"}</span>
+              <span class="badge">${esc(course.level)}</span><span class="badge">${esc(course.category)}</span>
+            </div>
+            <h1>${esc(course.title)}</h1>
+            <p class="muted" style="margin:0">${esc(course.summary)}</p>
+          </div>
+        </section>
+        <div class="course-layout">
+          <div class="stack">
+            <div class="card"><h2>About this course</h2><p class="muted" style="margin:0">${esc(course.description || course.summary)}</p></div>
+            <div class="card">
+              <h2>Lessons</h2>
+              <ol class="lesson-list">
+                ${course.lessons.map((l) => {
+                  const ok = canAccess(l);
+                  const inner = `<span class="lesson-check">${done.has(l.id) ? "✓" : ok ? l.position : "🔒"}</span>
+                    <span>${esc(l.title)} ${l.is_preview && course.is_premium ? '<span class="badge accent">Free preview</span>' : ""}</span>
+                    <span class="meta">${l.duration_minutes} min</span>`;
+                  return `<li class="${done.has(l.id) ? "done" : ""}">${ok ? `<a href="lesson.html?id=${l.id}">${inner}</a>` : `<span class="locked">${inner}</span>`}</li>`;
+                }).join("")}
+              </ol>
+            </div>
+          </div>
+          <aside class="card stack">
+            ${me && enrollment ? `<div><div class="row spread"><strong>Your progress</strong><span class="subtle">${pct}%</span></div>
+              <div class="progress${pct === 100 ? " done" : ""}" style="margin-top:8px"><span style="width:${pct}%"></span></div>
+              <p class="subtle" style="margin:8px 0 0">${done.size} of ${total} lessons complete</p></div>` : ""}
+            ${action}
+            <ul class="subtle" style="padding-left:18px;margin:0">
+              <li>${total} lessons · about ${minutes} minutes</li>
+              <li>Quizzes to check your understanding</li>
+              <li>Certificate of completion</li>
+            </ul>
+            ${locked ? `<div class="alert info" style="margin:0">Preview lessons are free. <a href="pricing.html">Start a 14-day free trial</a> to unlock the full course.</div>` : ""}
+          </aside>
+        </div>`;
+
+      App.$("#enroll")?.addEventListener("click", async (e) => {
+        e.target.disabled = true;
+        const { error } = await App.sb.rpc("enroll", { p_course_id: course.id });
+        if (error) { e.target.disabled = false; return App.toast(App.errorText(error)); }
+        location.href = `lesson.html?id=${nextLesson.id}`;
+      });
+    })();
+  </script>
+</body>
+</html>

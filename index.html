@@ -4,98 +4,67 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>My Learning Platform</title>
+  <link rel="stylesheet" href="css/styles.css">
   <style>
-    :root {
-      --bg: #f7f8fc;
-      --text: #1f2937;
-      --muted: #4b5563;
-      --accent: #4f46e5;
-      --accent-hover: #4338ca;
-    }
-
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg: #111827;
-        --text: #f9fafb;
-        --muted: #d1d5db;
-        --accent: #818cf8;
-        --accent-hover: #6366f1;
-      }
-    }
-
-    * {
-      box-sizing: border-box;
-    }
-
-    body {
-      margin: 0;
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 24px 16px;
-      background: var(--bg);
-      color: var(--text);
-      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-      text-align: center;
-    }
-
-    main {
-      max-width: 600px;
-    }
-
-    .greeting {
-      display: inline-block;
-      margin-bottom: 20px;
-      padding: 6px 16px;
-      border-radius: 999px;
-      background: color-mix(in srgb, var(--accent) 12%, transparent);
-      color: var(--accent);
-      font-weight: 600;
-    }
-
-    h1 {
-      margin: 0 0 16px;
-      font-size: clamp(2rem, 6vw, 3rem);
-      line-height: 1.2;
-    }
-
-    p {
-      margin: 0 0 32px;
-      font-size: 1.125rem;
-      line-height: 1.6;
-      color: var(--muted);
-    }
-
-    .button {
-      display: inline-block;
-      padding: 14px 32px;
-      border-radius: 8px;
-      background: var(--accent);
-      color: #fff;
-      font-size: 1rem;
-      font-weight: 600;
-      text-decoration: none;
-      transition: background 0.2s;
-    }
-
-    .button:hover,
-    .button:focus-visible {
-      background: var(--accent-hover);
-    }
-
-    .button:focus-visible {
-      outline: 3px solid var(--accent);
-      outline-offset: 3px;
-    }
+    .hero { text-align: center; padding: 56px 0 40px; }
+    .greeting { display: inline-block; margin-bottom: 20px; padding: 6px 16px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+    .hero h1 { margin: 0 0 16px; font-size: clamp(2rem, 6vw, 3rem); }
+    .hero p { max-width: 600px; margin: 0 auto 32px; font-size: 1.125rem; line-height: 1.6; color: var(--muted); }
+    .section { margin-top: 56px; }
+    .section h2 { text-align: center; margin-bottom: 24px; }
+    .steps .card { text-align: center; }
+    .steps .icon { font-size: 2rem; }
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+  <script src="js/app.js"></script>
 </head>
 <body>
-  <main>
-    <div class="greeting"><span aria-hidden="true">👋</span> We're so glad you're here</div>
-    <h1>Welcome to My Learning Platform</h1>
-    <p>Whether you're just starting out or picking up where you left off, this is a friendly space to learn at your own pace. Clear lessons, hands-on practice, and no pressure, just steady progress, one lesson at a time.</p>
-    <a class="button" href="#">Start Learning</a>
+  <main class="page">
+    <section class="hero">
+      <div class="greeting"><span aria-hidden="true">👋</span> We're so glad you're here</div>
+      <h1>Welcome to My Learning Platform</h1>
+      <p>Whether you're just starting out or picking up where you left off, this is a friendly space to learn at your own pace. Clear lessons, hands-on practice, and no pressure, just steady progress, one lesson at a time.</p>
+      <div class="row" style="justify-content:center">
+        <a class="button large" id="cta" href="login.html?mode=signup">Start Learning</a>
+        <a class="button large secondary" href="courses.html">Browse courses</a>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Popular courses</h2>
+      <div class="grid" id="featured"><div class="spinner">Loading courses…</div></div>
+    </section>
+
+    <section class="section">
+      <h2>How it works</h2>
+      <div class="grid steps">
+        <div class="card"><div class="icon">📚</div><h3>Pick a course</h3><p class="muted">Start with any free course, or unlock everything with Pro.</p></div>
+        <div class="card"><div class="icon">✅</div><h3>Learn &amp; practise</h3><p class="muted">Short lessons with quick quizzes so it actually sticks.</p></div>
+        <div class="card"><div class="icon">🔥</div><h3>Track your progress</h3><p class="muted">Keep your streak alive and watch your progress grow.</p></div>
+        <div class="card"><div class="icon">🎓</div><h3>Earn certificates</h3><p class="muted">Finish a course and get a shareable, verifiable certificate.</p></div>
+      </div>
+    </section>
+
+    <section class="section" style="text-align:center">
+      <h2>Free to start. Pro when you're ready.</h2>
+      <p class="muted">Try every Premium course free for 14 days.</p>
+      <a class="button" href="pricing.html">See plans</a>
+    </section>
   </main>
+
+  <script>
+    App.renderNav();
+    (async () => {
+      const me = await App.getProfile();
+      if (me) {
+        App.$("#cta").href = "dashboard.html";
+        App.$("#cta").textContent = "Continue learning";
+      }
+      const { data, error } = await App.sb.from("courses").select("*").eq("published", true).order("created_at").limit(4);
+      const el = App.$("#featured");
+      if (error) return (el.innerHTML = `<div class="empty">${App.esc(App.errorText(error))}</div>`);
+      el.innerHTML = data.length ? data.map((c) => App.courseCard(c)).join("") : `<div class="empty">Courses are coming soon.</div>`;
+    })();
+  </script>
 </body>
 </html>

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Account · My Learning Platform</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+  <script src="js/app.js"></script>
+</head>
+<body>
+  <main class="page narrow stack" id="root"><div class="spinner">Loading account…</div></main>
+
+  <script>
+    App.renderNav();
+    const { esc } = App;
+
+    (async () => {
+      const me = await App.requireAuth();
+      const sub = me.subscription;
+      const statusText = {
+        trialing: "Free trial", active: "Active", past_due: "Payment overdue", canceled: "Canceled",
+      };
+
+      let subscriptionBody;
+      if (me.premium) {
+        subscriptionBody = `
+          <p style="margin-top:0"><span class="badge premium">★ ${esc(sub.plans.name)}</span> <span class="badge">${statusText[sub.status]}</span></p>
+          <p class="muted">${sub.cancel_at_period_end
+            ? `Your plan ends on <strong>${App.formatDate(sub.current_period_end)}</strong>. You'll keep access until then.`
+            : `${sub.status === "trialing" ? "Your trial ends" : "Renews"} on <strong>${App.formatDate(sub.current_period_end)}</strong>.`}</p>
+          <button class="button ${sub.cancel_at_period_end ? "" : "secondary"}" id="toggle-cancel">
+            ${sub.cancel_at_period_end ? "Resume subscription" : "Cancel subscription"}</button>`;
+      } else {
+        subscriptionBody = `
+          <p style="margin-top:0"><span class="badge">Free plan</span></p>
+          <p class="muted">${sub ? "Your Pro access has ended. " : ""}Upgrade to unlock every Premium course.</p>
+          <a class="button" href="pricing.html">See plans</a>`;
+      }
+
+      App.$("#root").innerHTML = `
+        <div class="page-header"><h1>Account</h1><p>${esc(me.user.email)}</p></div>
+
+        <section class="card">
+          <h2>Profile</h2>
+          <div id="profile-msg" class="hidden"></div>
+          <form id="profile">
+            <div class="field"><label for="full_name">Name</label><input id="full_name" value="${esc(me.profile.full_name)}" autocomplete="name"></div>
+            <p class="subtle">This name appears on your certificates.</p>
+            <button class="button" type="submit">Save profile</button>
+          </form>
+        </section>
+
+        <section class="card"><h2>Subscription</h2>${subscriptionBody}</section>
+
+        <section class="card">
+          <h2>Security</h2>
+          <div id="pw-msg" class="hidden"></div>
+          <form id="password-form">
+            <div class="field"><label for="password">New password</label><input id="password" type="password" autocomplete="new-password" minlength="8"></div>
+            <button class="button secondary" type="submit">Change password</button>
+          </form>
+        </section>
+
+        <section class="card row spread">
+          <span class="muted">Signed in as ${esc(me.user.email)}</span>
+          <button class="button secondary" id="signout">Log out</button>
+        </section>`;
+
+      App.$("#profile").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const { error } = await App.sb.from("profiles").update({ full_name: App.$("#full_name").value.trim() }).eq("id", me.user.id);
+        App.showAlert(App.$("#profile-msg"), error ? App.errorText(error) : "Profile saved.", error ? "error" : "success");
+      });
+
+      App.$("#password-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const password = App.$("#password").value;
+        if (password.length < 8) return App.showAlert(App.$("#pw-msg"), "Password must be at least 8 characters.");
+        const { error } = await App.sb.auth.updateUser({ password });
+        App.showAlert(App.$("#pw-msg"), error ? App.errorText(error) : "Password changed.", error ? "error" : "success");
+        if (!error) App.$("#password").value = "";
+      });
+
+      App.$("#toggle-cancel")?.addEventListener("click", async (e) => {
+        const cancel = !sub.cancel_at_period_end;
+        if (cancel && !confirm(`Cancel your plan? You'll keep Pro until ${App.formatDate(sub.current_period_end)}.`)) return;
+        e.target.disabled = true;
+        const { error } = await App.sb.rpc("set_cancel_at_period_end", { p_cancel: cancel });
+        if (error) { e.target.disabled = false; return App.toast(App.errorText(error)); }
+        location.reload();
+      });
+
+      App.$("#signout").addEventListener("click", async () => {
+        await App.sb.auth.signOut();
+        location.href = "index.html";
+      });
+    })();
+  </script>
+</body>
+</html>

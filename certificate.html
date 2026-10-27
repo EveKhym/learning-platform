@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Certificate · My Learning Platform</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <style>
+    .certificate {
+      max-width: 820px;
+      margin: 0 auto;
+      padding: clamp(28px, 6vw, 64px);
+      text-align: center;
+      background: #fffdf7;
+      color: #1f2937;
+      border: 10px double #c7a24a;
+      border-radius: 6px;
+    }
+    .certificate .kicker { letter-spacing: 0.2em; text-transform: uppercase; color: #8a6d1f; font-weight: 700; font-size: 0.85rem; }
+    .certificate h1 { font-family: Georgia, "Times New Roman", serif; font-size: clamp(1.8rem, 5vw, 2.8rem); margin: 16px 0; }
+    .certificate .name { font-family: Georgia, serif; font-size: clamp(1.5rem, 4vw, 2.2rem); border-bottom: 2px solid #c7a24a; display: inline-block; padding: 0 24px 6px; margin: 8px 0 20px; }
+    .certificate .course { font-size: 1.25rem; font-weight: 700; }
+    .certificate .meta { margin-top: 32px; display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; color: #4b5563; font-size: 0.9rem; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+  <script src="js/app.js"></script>
+</head>
+<body>
+  <main class="page" id="root"><div class="spinner">Loading certificate…</div></main>
+  <script>
+    App.renderNav();
+    const { esc } = App;
+    (async () => {
+      const root = App.$("#root");
+      const { data: cert } = await App.sb.rpc("verify_certificate", { p_code: App.param("code") || "" });
+      if (!cert) return (root.innerHTML = `<div class="empty"><h1>Certificate not found</h1><p>Check the code and <a href="verify.html">try again</a>.</p></div>`);
+      const link = location.href;
+      root.innerHTML = `
+        <div class="certificate">
+          <div class="kicker">My Learning Platform</div>
+          <h1>Certificate of Completion</h1>
+          <p>This certifies that</p>
+          <div class="name">${esc(cert.learner || "A dedicated learner")}</div>
+          <p>has successfully completed the course</p>
+          <div class="course">${esc(cert.course)}</div>
+          <div class="meta"><span>Issued ${App.formatDate(cert.issued_at)}</span><span>Certificate ID: <strong>${esc(cert.code)}</strong></span></div>
+        </div>
+        <div class="row no-print" style="justify-content:center;margin-top:24px">
+          <button class="button" onclick="print()">Print or save as PDF</button>
+          <button class="button secondary" id="copy">Copy share link</button>
+        </div>
+        <p class="subtle no-print" style="text-align:center">✔ Verified: this certificate was issued by My Learning Platform.</p>`;
+      App.$("#copy").addEventListener("click", async () => {
+        try { await navigator.clipboard.writeText(link); App.toast("Link copied"); }
+        catch { App.toast(link); }
+      });
+    })();
+  </script>
+</body>
+</html>

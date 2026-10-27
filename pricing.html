@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pricing · My Learning Platform</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+  <script src="js/app.js"></script>
+</head>
+<body>
+  <main class="page">
+    <div class="page-header" style="text-align:center">
+      <h1>Simple, friendly pricing</h1>
+      <p>Start free. Upgrade whenever you're ready, and try Pro free for 14 days.</p>
+    </div>
+    <div id="message" class="hidden narrow"></div>
+    <div class="pricing" id="plans"><div class="spinner">Loading plans…</div></div>
+
+    <section class="narrow card" style="margin-top:40px">
+      <h2 style="font-size:1.2rem">Questions</h2>
+      <p><strong>Do I need a card for the trial?</strong><br><span class="muted">No. Your 14-day trial starts instantly and you can cancel anytime from your account page.</span></p>
+      <p><strong>What happens when I cancel?</strong><br><span class="muted">You keep Pro until the end of your current period, then move to the Free plan. Your progress and certificates are kept forever.</span></p>
+      <p style="margin-bottom:0"><strong>Are free courses really free?</strong><br><span class="muted">Yes. Free courses include lessons, quizzes, progress tracking and certificates.</span></p>
+    </section>
+  </main>
+
+  <script>
+    App.renderNav();
+    const { esc } = App;
+
+    (async () => {
+      const [{ data: plans, error }, me] = await Promise.all([
+        App.sb.from("plans").select("*").order("sort_order"),
+        App.getProfile(),
+      ]);
+      const el = App.$("#plans");
+      if (error) return (el.innerHTML = `<div class="empty">${esc(App.errorText(error))}</div>`);
+
+      const sub = me?.subscription;
+      const trialUsed = !!sub?.trial_used;
+      const currentPlan = me?.premium ? sub.plan_id : "free";
+
+      el.innerHTML = plans.map((p) => {
+        let cta;
+        if (p.id === currentPlan && me) cta = `<button class="button secondary block" disabled>Your current plan</button>`;
+        else if (!p.is_premium) cta = me ? `<span class="subtle" style="text-align:center">Included with every account</span>`
+          : `<a class="button secondary block" href="login.html?mode=signup">Sign up free</a>`;
+        else if (!me) cta = `<a class="button block" href="login.html?mode=signup&next=pricing.html">Start free trial</a>`;
+        else if (me.premium) cta = `<button class="button secondary block" data-checkout="${esc(p.id)}">Switch plan</button>`;
+        else if (!trialUsed) cta = `<button class="button block" data-trial="${esc(p.id)}">Start 14-day free trial</button>`;
+        else cta = `<button class="button block" data-checkout="${esc(p.id)}">Subscribe</button>`;
+
+        return `<div class="card plan${p.id === "pro_monthly" ? " featured" : ""}">
+          ${p.id === "pro_monthly" ? '<span class="badge accent" style="align-self:flex-start">Most popular</span>' : ""}
+          <h2 style="margin:0">${esc(p.name)}</h2>
+          <span class="muted">${esc(p.description)}</span>
+          <div class="price">${App.formatPrice(p)}${p.price_cents ? `<small> / ${p.billing_interval}</small>` : ""}</div>
+          <ul>${p.features.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>
+          ${cta}
+        </div>`;
+      }).join("");
+
+      el.addEventListener("click", async (e) => {
+        const msg = App.$("#message");
+        const trial = e.target.closest("[data-trial]");
+        const checkout = e.target.closest("[data-checkout]");
+        if (trial) {
+          trial.disabled = true;
+          const { error } = await App.sb.rpc("start_trial", { p_plan_id: trial.dataset.trial });
+          if (error) { trial.disabled = false; return App.showAlert(msg, App.errorText(error)); }
+          App.toast("Your Pro trial has started 🎉");
+          setTimeout(() => (location.href = "dashboard.html"), 1000);
+        } else if (checkout) {
+          // Paid checkout needs a payment provider (e.g. Stripe) wired up; see README.
+          App.showAlert(msg, "Online payments aren't switched on yet. Please check back soon!", "info");
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

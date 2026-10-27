@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Courses · My Learning Platform</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <style>
+    .filters { display: grid; gap: 12px; grid-template-columns: 2fr repeat(3, 1fr); margin-bottom: 24px; }
+    @media (max-width: 700px) { .filters { grid-template-columns: 1fr 1fr; } .filters input { grid-column: 1 / -1; } }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+  <script src="js/app.js"></script>
+</head>
+<body>
+  <main class="page">
+    <div class="page-header">
+      <h1>Course catalog</h1>
+      <p>Find something new to learn today.</p>
+    </div>
+
+    <div class="filters">
+      <input id="search" type="search" placeholder="Search courses…" aria-label="Search courses">
+      <select id="category" aria-label="Category"><option value="">All categories</option></select>
+      <select id="level" aria-label="Level">
+        <option value="">All levels</option><option>Beginner</option><option>Intermediate</option><option>Advanced</option>
+      </select>
+      <select id="access" aria-label="Access">
+        <option value="">Free &amp; Premium</option><option value="free">Free only</option><option value="premium">Premium only</option>
+      </select>
+    </div>
+
+    <div class="grid" id="list"><div class="spinner">Loading courses…</div></div>
+  </main>
+
+  <script>
+    App.renderNav();
+    let courses = [];
+    const progress = {};
+
+    function render() {
+      const q = App.$("#search").value.trim().toLowerCase();
+      const cat = App.$("#category").value, level = App.$("#level").value, access = App.$("#access").value;
+      const shown = courses.filter((c) =>
+        (!q || `${c.title} ${c.summary} ${c.category}`.toLowerCase().includes(q)) &&
+        (!cat || c.category === cat) && (!level || c.level === level) &&
+        (!access || (access === "premium") === c.is_premium));
+      App.$("#list").innerHTML = shown.length
+        ? shown.map((c) => App.courseCard(c, progress[c.id])).join("")
+        : `<div class="empty">No courses match those filters.</div>`;
+    }
+
+    (async () => {
+      const { data, error } = await App.sb.from("courses").select("*, lessons(id)").eq("published", true).order("created_at");
+      if (error) return (App.$("#list").innerHTML = `<div class="empty">${App.esc(App.errorText(error))}</div>`);
+      courses = data;
+
+      const me = await App.getProfile();
+      if (me) {
+        const [{ data: enrolled }, { data: done }] = await Promise.all([
+          App.sb.from("enrollments").select("course_id"),
+          App.sb.from("lesson_progress").select("course_id"),
+        ]);
+        for (const e of enrolled || []) {
+          const c = courses.find((x) => x.id === e.course_id);
+          if (c) progress[c.id] = { total: c.lessons.length, done: 0 };
+        }
+        for (const d of done || []) if (progress[d.course_id]) progress[d.course_id].done++;
+      }
+
+      const cats = [...new Set(courses.map((c) => c.category))].sort();
+      App.$("#category").insertAdjacentHTML("beforeend", cats.map((c) => `<option>${App.esc(c)}</option>`).join(""));
+      ["search", "category", "level", "access"].forEach((id) => App.$("#" + id).addEventListener("input", render));
+      render();
+    })();
+  </script>
+</body>
+</html>

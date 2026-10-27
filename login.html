@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Log In · My Learning Platform</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+  <script src="js/app.js"></script>
+</head>
+<body>
+  <main class="page">
+    <div class="card" style="max-width:420px;margin:24px auto">
+      <div class="tabs" role="tablist">
+        <button role="tab" data-mode="login" aria-selected="true">Log in</button>
+        <button role="tab" data-mode="signup" aria-selected="false">Sign up</button>
+      </div>
+
+      <div id="message" class="hidden"></div>
+
+      <form id="auth-form" novalidate>
+        <div class="field" data-for="signup">
+          <label for="name">Your name</label>
+          <input id="name" autocomplete="name">
+        </div>
+        <div class="field">
+          <label for="email">Email</label>
+          <input id="email" type="email" autocomplete="email" required>
+        </div>
+        <div class="field" data-for="login signup">
+          <label for="password">Password</label>
+          <input id="password" type="password" autocomplete="current-password" minlength="8" required>
+          <p class="subtle hidden" data-for="signup" style="margin:6px 0 0">At least 8 characters.</p>
+        </div>
+        <button class="button block" id="submit" type="submit">Log in</button>
+      </form>
+
+      <p class="subtle" style="text-align:center;margin:16px 0 0">
+        <button class="linklike" id="forgot" type="button" data-for="login">Forgot your password?</button>
+        <button class="linklike hidden" id="back" type="button">Back to log in</button>
+      </p>
+    </div>
+  </main>
+
+  <script>
+    App.renderNav();
+    const next = App.param("next") || "dashboard.html";
+    // Only allow same-site relative redirects.
+    const safeNext = /^[\w.-]+\.html(\?.*)?$/.test(next) ? next : "dashboard.html";
+    let mode = App.param("mode") === "signup" ? "signup" : "login";
+
+    function setMode(m) {
+      mode = m;
+      document.querySelectorAll("[role=tab]").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.mode === m)));
+      App.$(".tabs").classList.toggle("hidden", m === "reset");
+      document.querySelectorAll("[data-for]").forEach((el) => el.classList.toggle("hidden", !el.dataset.for.split(" ").includes(m)));
+      App.$("#back").classList.toggle("hidden", m !== "reset");
+      App.$("#password").autocomplete = m === "signup" ? "new-password" : "current-password";
+      App.$("#submit").textContent = { login: "Log in", signup: "Create free account", reset: "Send reset link" }[m];
+      App.$("#message").classList.add("hidden");
+    }
+
+    document.querySelectorAll("[role=tab]").forEach((t) => t.addEventListener("click", () => setMode(t.dataset.mode)));
+    App.$("#forgot").addEventListener("click", () => setMode("reset"));
+    App.$("#back").addEventListener("click", () => setMode("login"));
+    setMode(mode);
+
+    App.getSession().then((s) => s && location.replace(safeNext));
+
+    App.$("#auth-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const msg = App.$("#message");
+      const email = App.$("#email").value.trim();
+      const password = App.$("#password").value;
+      const button = App.$("#submit");
+
+      if (!/^\S+@\S+\.\S+$/.test(email)) return App.showAlert(msg, "Please enter a valid email address.");
+      if (mode !== "reset" && password.length < 8) return App.showAlert(msg, "Password must be at least 8 characters.");
+
+      button.disabled = true;
+      try {
+        const here = location.href.replace(/[^/]*$/, "");
+        if (mode === "login") {
+          const { error } = await App.sb.auth.signInWithPassword({ email, password });
+          if (error) throw error;
+          location.replace(safeNext);
+        } else if (mode === "signup") {
+          const { data, error } = await App.sb.auth.signUp({
+            email, password,
+            options: { data: { full_name: App.$("#name").value.trim() }, emailRedirectTo: here + "dashboard.html" },
+          });
+          if (error) throw error;
+          if (data.session) location.replace(safeNext);
+          else App.showAlert(msg, "Almost there! Check your inbox to confirm your email, then log in.", "success");
+        } else {
+          const { error } = await App.sb.auth.resetPasswordForEmail(email, { redirectTo: here + "reset.html" });
+          if (error) throw error;
+          App.showAlert(msg, "If that email has an account, a reset link is on its way.", "success");
+        }
+      } catch (err) {
+        App.showAlert(msg, App.errorText(err));
+      } finally {
+        button.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

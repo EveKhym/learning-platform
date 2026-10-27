@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson · My Learning Platform</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+  <script src="js/app.js"></script>
+</head>
+<body>
+  <main class="page" id="root"><div class="spinner">Loading lesson…</div></main>
+
+  <script>
+    App.renderNav();
+    const { esc } = App;
+    const lessonId = App.param("id") || "";
+
+    (async () => {
+      const root = App.$("#root");
+      const { data: lesson } = await App.sb.from("lessons")
+        .select("*, courses(*, lessons(id, position, title, duration_minutes, is_preview))")
+        .eq("id", lessonId).maybeSingle();
+      if (!lesson) return (root.innerHTML = `<div class="empty"><h1>Lesson not found</h1><a href="courses.html">Browse courses</a></div>`);
+
+      const course = lesson.courses;
+      const siblings = course.lessons.sort((a, b) => a.position - b.position);
+      const index = siblings.findIndex((l) => l.id === lesson.id);
+      const prev = siblings[index - 1], next = siblings[index + 1];
+      document.title = `${lesson.title} · ${course.title}`;
+
+      const me = await App.getProfile();
+      const [contentRes, quizRes, progressRes, noteRes] = await Promise.all([
+        App.sb.from("lesson_content").select("*").eq("lesson_id", lesson.id).maybeSingle(),
+        App.sb.from("quiz_questions").select("id, position, question, options").eq("lesson_id", lesson.id).order("position"),
+        me ? App.sb.from("lesson_progress").select("lesson_id, quiz_score, quiz_total").eq("course_id", course.id) : { data: [] },
+        me ? App.sb.from("lesson_notes").select("body").eq("lesson_id", lesson.id).maybeSingle() : { data: null },
+      ]);
+      const content = contentRes.data;
+      const quiz = quizRes.data || [];
+      const done = new Set((progressRes.data || []).map((p) => p.lesson_id));
+      const canAccess = (l) => !course.is_premium || l.is_preview || me?.premium || me?.profile.is_admin;
+
+      if (me && content) App.sb.rpc("touch_lesson", { p_lesson_id: lesson.id });
+
+      const sidebar = `<aside class="card">
+        <a href="course.html?slug=${encodeURIComponent(course.slug)}" class="subtle">← ${esc(course.title)}</a>
+        <div class="progress${done.size === siblings.length ? " done" : ""}" style="margin:12px 0 4px"><span id="side-progress" style="width:${Math.round((done.size / siblings.length) * 100)}%"></span></div>
+        <p class="subtle" id="side-count" style="margin:0 0 8px">${done.size} of ${siblings.length} complete</p>
+        <ol class="lesson-list">${siblings.map((l) => `<li class="${done.has(l.id) ? "done" : ""}${l.id === lesson.id ? " current" : ""}" data-lesson="${l.id}">
+          ${canAccess(l) ? `<a href="lesson.html?id=${l.id}">` : `<span class="locked">`}
+          <span class="lesson-check">${done.has(l.id) ? "✓" : canAccess(l) ? l.position : "🔒"}</span><span>${esc(l.title)}</span>
+          ${canAccess(l) ? "</a>" : "</span>"}</li>`).join("")}</ol>
+      </aside>`;
+
+      let body;
+      if (!content) {
+        body = `<div class="card paywall">
+          <div class="icon">🔒</div>
+          <h2>This lesson is part of Pro</h2>
+          <p class="muted">Unlock every Premium course, quiz and certificate. Try it free for 14 days.</p>
+          <a class="button" href="${me ? "pricing.html" : "login.html?mode=signup&next=pricing.html"}">${me ? "See plans" : "Sign up free"}</a>
+        </div>`;
+      } else {
+        body = `
+          <p class="subtle" style="margin:0">Lesson ${lesson.position} of ${siblings.length} · ${lesson.duration_minutes} min</p>
+          <h1 style="margin:6px 0 20px">${esc(lesson.title)}</h1>
+          ${App.videoEmbed(content.video_url)}
+          <article class="lesson-content">${App.renderMarkdown(content.body)}</article>
+
+          ${quiz.length ? `<section class="card" id="quiz-card" style="margin-top:28px">
+            <h2>Quick check</h2>
+            <p class="subtle">Score 70% or more to complete this lesson.</p>
+            <form id="quiz">${quiz.map((q, qi) => `<fieldset class="quiz-q" style="border:0;padding:0;margin:0 0 20px">
+              <legend style="font-weight:600;margin-bottom:8px">${qi + 1}. ${esc(q.question)}</legend>
+              ${q.options.map((o, oi) => `<label class="quiz-option" data-q="${q.id}" data-o="${oi}"><input type="radio" name="${q.id}" value="${oi}" required> ${esc(o)}</label>`).join("")}
+            </fieldset>`).join("")}
+              <div id="quiz-result" class="hidden"></div>
+              <button class="button" type="submit">Submit answers</button>
+            </form>
+          </section>` : ""}
+
+          <div class="row spread" style="margin-top:28px">
+            ${prev ? `<a class="button secondary" href="lesson.html?id=${prev.id}">← Previous</a>` : "<span></span>"}
+            <div class="row">
+              ${!quiz.length ? `<button class="button${done.has(lesson.id) ? " secondary" : ""}" id="complete" ${done.has(lesson.id) ? "disabled" : ""}>${done.has(lesson.id) ? "✓ Completed" : "Mark as complete"}</button>` : ""}
+              ${next ? `<a class="button${done.has(lesson.id) ? "" : " secondary"}" id="next" href="lesson.html?id=${next.id}">Next lesson →</a>` : ""}
+            </div>
+          </div>
+
+          ${me ? `<section class="card" style="margin-top:28px">
+            <h2 style="font-size:1.1rem">My notes</h2>
+            <textarea id="notes" placeholder="Jot down what you want to remember…" aria-label="My notes">${esc(noteRes.data?.body || "")}</textarea>
+            <p class="subtle" id="notes-status" style="margin:6px 0 0">Only you can see your notes. They save automatically.</p>
+          </section>` : `<div class="alert info" style="margin-top:28px"><a href="login.html?mode=signup&next=${encodeURIComponent("lesson.html?id=" + lesson.id)}">Create a free account</a> to save your progress and take notes.</div>`}`;
+      }
+
+      root.innerHTML = `<div class="lesson-layout"><div>${body}</div>${sidebar}</div>`;
+
+      function markDone(courseCompleted) {
+        done.add(lesson.id);
+        const li = document.querySelector(`[data-lesson="${lesson.id}"]`);
+        li?.classList.add("done");
+        li && (li.querySelector(".lesson-check").textContent = "✓");
+        const pct = Math.round((done.size / siblings.length) * 100);
+        App.$("#side-progress").style.width = pct + "%";
+        App.$("#side-count").textContent = `${done.size} of ${siblings.length} complete`;
+        App.$("#next")?.classList.remove("secondary");
+        if (courseCompleted) {
+          App.toast("🎓 Course complete! Your certificate is ready.");
+          setTimeout(() => (location.href = `course.html?slug=${encodeURIComponent(course.slug)}`), 1800);
+        } else App.toast("Nice work! Lesson complete ✅");
+      }
+
+      const requireLogin = () => {
+        if (me) return true;
+        location.href = `login.html?next=${encodeURIComponent("lesson.html?id=" + lesson.id)}`;
+        return false;
+      };
+
+      App.$("#complete")?.addEventListener("click", async (e) => {
+        if (!requireLogin()) return;
+        e.target.disabled = true;
+        const { data, error } = await App.sb.rpc("complete_lesson", { p_lesson_id: lesson.id });
+        if (error) { e.target.disabled = false; return App.toast(App.errorText(error)); }
+        e.target.textContent = "✓ Completed";
+        e.target.classList.add("secondary");
+        markDone(data.course_completed);
+      });
+
+      App.$("#quiz")?.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        if (!requireLogin()) return;
+        const answers = Object.fromEntries(new FormData(e.target));
+        const button = e.target.querySelector("button");
+        button.disabled = true;
+        const { data, error } = await App.sb.rpc("submit_quiz", { p_lesson_id: lesson.id, p_answers: answers });
+        button.disabled = false;
+        const result = App.$("#quiz-result");
+        if (error) return App.showAlert(result, App.errorText(error));
+        if (data.passed) {
+          App.showAlert(result, `You scored ${data.score}/${data.total}. Lesson complete!`, "success");
+          for (const [qid, idx] of Object.entries(data.correct))
+            document.querySelector(`.quiz-option[data-q="${qid}"][data-o="${idx}"]`)?.classList.add("correct");
+          button.textContent = "Retake quiz";
+          if (!done.has(lesson.id)) markDone(data.course_completed);
+        } else {
+          App.showAlert(result, `You scored ${data.score}/${data.total}. Review the lesson and try again, you've got this!`);
+        }
+      });
+
+      const notes = App.$("#notes");
+      if (notes) {
+        let timer;
+        notes.addEventListener("input", () => {
+          App.$("#notes-status").textContent = "Saving…";
+          clearTimeout(timer);
+          timer = setTimeout(async () => {
+            const { error } = await App.sb.from("lesson_notes").upsert({
+              user_id: me.user.id, lesson_id: lesson.id, body: notes.value, updated_at: new Date().toISOString(),
+            });
+            App.$("#notes-status").textContent = error ? "Couldn't save your notes. Check your connection." : "Saved.";
+          }, 700);
+        });
+      }
+    })();
+  </script>
+</body>
+</html>
