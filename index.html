@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Learning Platform</title>
+  <title>My Learning Platform</title>
   <style>
     :root {
       --bg: #f7f8fc;
@@ -44,6 +44,16 @@
       max-width: 600px;
     }
 
+    .greeting {
+      display: inline-block;
+      margin-bottom: 20px;
+      padding: 6px 16px;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--accent) 12%, transparent);
+      color: var(--accent);
+      font-weight: 600;
+    }
+
     h1 {
       margin: 0 0 16px;
       font-size: clamp(2rem, 6vw, 3rem);
@@ -82,8 +92,9 @@
 </head>
 <body>
   <main>
-    <h1>Welcome to Learning Platform</h1>
-    <p>Learn new skills at your own pace with clear lessons and hands-on practice. Start today and keep growing, one lesson at a time.</p>
+    <div class="greeting"><span aria-hidden="true">👋</span> We're so glad you're here</div>
+    <h1>Welcome to My Learning Platform</h1>
+    <p>Whether you're just starting out or picking up where you left off, this is a friendly space to learn at your own pace. Clear lessons, hands-on practice, and no pressure, just steady progress, one lesson at a time.</p>
     <a class="button" href="#">Start Learning</a>
   </main>
 </body>
